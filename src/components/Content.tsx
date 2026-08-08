@@ -191,7 +191,7 @@ export default function Content() {
   }, []);
 
   // Helper: parse due_period (YYYY-MM or YYYY-Qn)
-  function isOverdue(due_period: string | null, status: string) {
+  const isOverdue = React.useCallback((due_period: string | null, status: string) => {
     if (!due_period || status === 'fulfilled') return false;
     const today = now;
     if (/^\d{4}-\d{2}$/.test(due_period)) {
@@ -207,7 +207,7 @@ export default function Content() {
       return today > due;
     }
     return false;
-  }
+  }, [now]);
 
   const summary = React.useMemo(() => {
     const total = content.length;
@@ -222,7 +222,7 @@ export default function Content() {
       }
     }
     return { total, byStatus, overdue, overdueList };
-  }, [content, now]);
+  }, [content, isOverdue]);
 
   const athleteNameById = React.useMemo(() => {
     const map: Record<string, string> = {};

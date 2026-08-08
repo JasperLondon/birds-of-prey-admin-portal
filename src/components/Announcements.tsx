@@ -105,7 +105,7 @@ export default function Announcements() {
   });
   const [search, setSearch] = useState({ title: '', audience: '' });
   const [saving, setSaving] = useState(false);
-  const [readStatuses, setReadStatuses] = useState<{ [id: string]: ReadStatus[] }>({});
+  const [, setReadStatuses] = useState<{ [id: string]: ReadStatus[] }>({});
 
   useEffect(() => {
     fetchAll();
