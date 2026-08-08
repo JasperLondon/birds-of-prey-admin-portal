@@ -36,7 +36,10 @@ const App: React.FC = () => {
       setAuthResolved(true);
     });
 
-    const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
+    const { data: listener } = supabase.auth.onAuthStateChange((event, session) => {
+      if (event === 'PASSWORD_RECOVERY') {
+        setRecoveryMode(true);
+      }
       setSession(session);
       if (!session) {
         setSelectedPortal('selector');
