@@ -28,6 +28,58 @@
   color: #61dafb;
 }
 
+/* Modern Calendar UI Styles */
+.fc {
+  background: #23272f;
+  color: #fff;
+  border-radius: 16px;
+  box-shadow: 0 4px 24px rgba(0,0,0,0.2);
+}
+.fc-toolbar-title {
+  font-size: 1.5rem;
+  font-weight: 600;
+  color: #fff;
+}
+.fc-event {
+  border-radius: 8px;
+  font-weight: 500;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.12);
+  border: none;
+}
+.fc-event-confirmed { background: #43a047 !important; }
+.fc-event-tentative { background: #fbc02d !important; color: #232323 !important; }
+.fc-event-conflict { background: #e53935 !important; }
+.fc-daygrid-day, .fc-timegrid-slot {
+  background: #232323;
+  color: #fff;
+}
+.fc-button {
+  border-radius: 8px !important;
+  background: #1976d2 !important;
+  color: #fff !important;
+  font-weight: 600;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.12);
+}
+.fc-button-primary:not(:disabled):active, .fc-button-primary:not(:disabled).fc-button-active {
+  background: #1565c0 !important;
+}
+.fc-today {
+  background: #1e88e5 !important;
+  color: #fff !important;
+  border-radius: 8px;
+}
+.fc-daygrid-day-number {
+  color: #90caf9 !important;
+  font-weight: 700;
+}
+.fc-col-header-cell {
+  color: #fff !important;
+  font-weight: 700;
+}
+.fc-scrollgrid {
+  border-radius: 16px;
+}
+
 @keyframes App-logo-spin {
   from {
     transform: rotate(0deg);
