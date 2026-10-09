@@ -11,39 +11,134 @@ import DialogContentText from '@mui/material/DialogContentText';
 import DialogActions from '@mui/material/DialogActions';
 import './Content.scoped.css';
 
+const SIGNED_URL_TTL_SECONDS = 60;
+const SIGNED_URL_REFRESH_GRACE_MS = 5000;
+const signedUrlCache = new Map<string, { signedUrl: string; expiresAt: number }>();
+
+function parseHttpUrl(value: string): URL | null {
+  try {
+    const url = new URL(value);
+    if (url.protocol === 'http:' || url.protocol === 'https:') return url;
+  } catch {
+    // Invalid URL; handled by caller.
+  }
+  return null;
+}
+
+async function resolveFileAccessUrl(fileUrl: string, options?: { forceRefresh?: boolean }) {
+  const parsed = parseHttpUrl(fileUrl);
+  if (parsed) {
+    return {
+      url: parsed.toString(),
+      source: 'direct' as const,
+      fromCache: false,
+    };
+  }
+
+  const cacheKey = fileUrl;
+  const now = Date.now();
+  const cached = signedUrlCache.get(cacheKey);
+  if (!options?.forceRefresh && cached && cached.expiresAt - SIGNED_URL_REFRESH_GRACE_MS > now) {
+    return {
+      url: cached.signedUrl,
+      source: 'signed' as const,
+      fromCache: true,
+    };
+  }
+
+  const { data, error } = await supabase.storage.from('files').createSignedUrl(fileUrl, SIGNED_URL_TTL_SECONDS);
+  if (error || !data?.signedUrl) {
+    throw new Error(error?.message || 'Could not get file link.');
+  }
+
+  signedUrlCache.set(cacheKey, {
+    signedUrl: data.signedUrl,
+    expiresAt: now + SIGNED_URL_TTL_SECONDS * 1000,
+  });
+
+  return {
+    url: data.signedUrl,
+    source: 'signed' as const,
+    fromCache: false,
+  };
+}
+
 // FilePreview component for image/video
 function FilePreview({ fileUrl, type }: { fileUrl: string, type: string }) {
   const [previewUrl, setPreviewUrl] = React.useState<string | null>(null);
   const [error, setError] = React.useState<string | null>(null);
   const [broken, setBroken] = React.useState(false);
+  const [signedPath, setSignedPath] = React.useState<string | null>(null);
+  const [retrying, setRetrying] = React.useState(false);
+  const hasRetriedSignedUrlRef = React.useRef(false);
+  const mountedRef = React.useRef(true);
+
+  React.useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
+
   React.useEffect(() => {
     let isMounted = true;
     setError(null);
     setBroken(false);
+    setRetrying(false);
+    setSignedPath(null);
+    hasRetriedSignedUrlRef.current = false;
     if (!fileUrl) {
       setPreviewUrl(null);
       return;
     }
-    if (fileUrl.startsWith('http')) {
-      setPreviewUrl(fileUrl);
+    const direct = parseHttpUrl(fileUrl);
+    if (direct) {
+      setPreviewUrl(direct.toString());
       return;
     }
+
+    setSignedPath(fileUrl);
     async function getUrl() {
-      const { data, error } = await supabase.storage.from('files').createSignedUrl(fileUrl, 60);
-      if (error) {
-        if (isMounted) setError('Could not get file preview.');
-        console.error('Supabase signedUrl error:', error);
-        return;
-      }
-      if (isMounted && data?.signedUrl) {
-        setPreviewUrl(data.signedUrl);
-      } else if (isMounted) {
-        setError('No signed URL returned.');
+      try {
+        const resolved = await resolveFileAccessUrl(fileUrl);
+        if (isMounted) {
+          setPreviewUrl(resolved.url);
+        }
+      } catch (err: any) {
+        if (isMounted) {
+          setError('Could not get file preview.');
+        }
+        console.error('Supabase signedUrl error:', err);
       }
     }
-    getUrl();
+    void getUrl();
     return () => { isMounted = false; };
   }, [fileUrl]);
+
+  async function refreshSignedPreviewIfNeeded() {
+    if (!signedPath || retrying || hasRetriedSignedUrlRef.current) {
+      setBroken(true);
+      return;
+    }
+    hasRetriedSignedUrlRef.current = true;
+    setRetrying(true);
+    try {
+      const resolved = await resolveFileAccessUrl(signedPath, { forceRefresh: true });
+      if (!mountedRef.current) return;
+      setPreviewUrl(resolved.url);
+      setBroken(false);
+      setError(null);
+    } catch {
+      if (!mountedRef.current) return;
+      setBroken(true);
+      setError('Could not get file preview.');
+    } finally {
+      if (mountedRef.current) {
+        setRetrying(false);
+      }
+    }
+  }
+
   if (error) return <span style={{ color: '#d32f2f', marginRight: 8 }}>{error}</span>;
   if (!previewUrl && (type === 'image' || type === 'video')) return <span style={{ color: '#90caf9', marginRight: 8 }}>Loading...</span>;
 
@@ -81,7 +176,7 @@ function FilePreview({ fileUrl, type }: { fileUrl: string, type: string }) {
         src={previewUrl || ''}
         alt="preview"
         style={{ maxWidth: 80, maxHeight: 80, borderRadius: 4, marginRight: 8 }}
-        onError={() => setBroken(true)}
+        onError={() => { void refreshSignedPreviewIfNeeded(); }}
       />
     );
   }
@@ -93,7 +188,7 @@ function FilePreview({ fileUrl, type }: { fileUrl: string, type: string }) {
         src={previewUrl || ''}
         controls
         style={{ maxWidth: 120, maxHeight: 80, borderRadius: 4, marginRight: 8 }}
-        onError={() => setBroken(true)}
+        onError={() => { void refreshSignedPreviewIfNeeded(); }}
       />
     );
   }
@@ -185,6 +280,14 @@ export default function Content() {
   // State for feedback and status editing per row (moved inside component)
   const [rowEdits, setRowEdits] = useState<Record<string, {feedback: string, status: string}>>({});
   const [rowSaving, setRowSaving] = useState<Record<string, boolean>>({});
+
+  // File preview modal state
+  const [previewOpen, setPreviewOpen] = useState(false);
+  const [previewLoading, setPreviewLoading] = useState(false);
+  const [previewError, setPreviewError] = useState('');
+  const [previewUrl, setPreviewUrl] = useState('');
+  const [previewTitle, setPreviewTitle] = useState('');
+  const [previewType, setPreviewType] = useState<'image' | 'video' | 'pdf' | 'other'>('other');
 
   // Compliance summary state
   const [now, setNow] = useState(() => new Date());
@@ -556,6 +659,41 @@ export default function Content() {
     fetchAll();
   }
 
+  function classifyPreviewType(itemType: string, fileUrl: string | null): 'image' | 'video' | 'pdf' | 'other' {
+    if (itemType === 'image') return 'image';
+    if (itemType === 'video') return 'video';
+    const ext = ((fileUrl || '').split('.').pop() || '').toLowerCase();
+    if (ext === 'pdf') return 'pdf';
+    return 'other';
+  }
+
+  async function openPreview(item: ContentItem) {
+    if (!item.file_url) return;
+    setPreviewOpen(true);
+    setPreviewLoading(true);
+    setPreviewError('');
+    setPreviewTitle(item.title);
+    setPreviewType(classifyPreviewType(item.type, item.file_url));
+    try {
+      const resolved = await resolveFileAccessUrl(item.file_url);
+      setPreviewUrl(resolved.url);
+    } catch {
+      setPreviewUrl('');
+      setPreviewError('Could not get file link.');
+    } finally {
+      setPreviewLoading(false);
+    }
+  }
+
+  function closePreview() {
+    setPreviewOpen(false);
+    setPreviewLoading(false);
+    setPreviewError('');
+    setPreviewUrl('');
+    setPreviewTitle('');
+    setPreviewType('other');
+  }
+
   return (
     <div className="mwd-content-shell">
       {/* Loading Overlay */}
@@ -751,23 +889,7 @@ export default function Content() {
                                   color="info"
                                   aria-label={`View file for ${item.title}`}
                                   className="icon-btn view"
-                                  onClick={async () => {
-                                    if (typeof item.file_url === 'string') {
-                                      try {
-                                        const directUrl = new URL(item.file_url);
-                                        const isHttp = directUrl.protocol === 'http:' || directUrl.protocol === 'https:';
-                                        if (isHttp) {
-                                          window.open(directUrl.toString(), '_blank');
-                                          return;
-                                        }
-                                      } catch {
-                                        // Not a valid absolute URL, continue with signed URL path handling.
-                                      }
-                                      const { data } = await supabase.storage.from('files').createSignedUrl(item.file_url, 60);
-                                      if (data?.signedUrl) window.open(data.signedUrl, '_blank');
-                                      else alert('Could not get file link.');
-                                    }
-                                  }}
+                                  onClick={() => { void openPreview(item); }}
                                   size="small"
                                 >
                                   <Visibility fontSize="small" />
@@ -1205,6 +1327,96 @@ export default function Content() {
           </DialogActions>
         </Dialog>
       )}
+
+      <Dialog
+        open={previewOpen}
+        onClose={closePreview}
+        fullWidth
+        maxWidth="md"
+        PaperProps={{
+          sx: {
+            bgcolor: '#151517',
+            color: '#f3f3f4',
+            borderRadius: 3,
+            border: '1px solid #2b2b2e',
+            boxShadow: 'none',
+          },
+        }}
+      >
+        <DialogTitle sx={{ pb: 1, color: '#f4f4f5', fontWeight: 690, letterSpacing: 0.1 }}>
+          {previewTitle || 'File Preview'}
+        </DialogTitle>
+        <DialogContent>
+          {previewLoading ? (
+            <div style={{ color: '#90caf9', minHeight: 120, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              Loading preview...
+            </div>
+          ) : null}
+
+          {!previewLoading && previewError ? (
+            <div style={{ color: '#e53935', minHeight: 120, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              {previewError}
+            </div>
+          ) : null}
+
+          {!previewLoading && !previewError && previewUrl ? (
+            <div style={{ display: 'grid', gap: 12 }}>
+              {previewType === 'image' ? (
+                <img
+                  src={previewUrl}
+                  alt={previewTitle || 'preview'}
+                  style={{ width: '100%', maxHeight: '70vh', objectFit: 'contain', borderRadius: 8, background: '#111214' }}
+                  onError={() => setPreviewError('Preview failed to load. You can open the original file instead.')}
+                />
+              ) : null}
+
+              {previewType === 'video' ? (
+                <video
+                  src={previewUrl}
+                  controls
+                  style={{ width: '100%', maxHeight: '70vh', borderRadius: 8, background: '#111214' }}
+                  onError={() => setPreviewError('Preview failed to load. You can open the original file instead.')}
+                />
+              ) : null}
+
+              {previewType === 'pdf' ? (
+                <iframe
+                  title={previewTitle || 'PDF Preview'}
+                  src={previewUrl}
+                  style={{ width: '100%', minHeight: '70vh', border: '1px solid #2b2b2e', borderRadius: 8, background: '#111214' }}
+                />
+              ) : null}
+
+              {previewType === 'other' ? (
+                <div style={{ color: '#cfcfd3', minHeight: 120, display: 'flex', alignItems: 'center', justifyContent: 'center', textAlign: 'center' }}>
+                  This file type does not support inline preview. Use Open Original.
+                </div>
+              ) : null}
+            </div>
+          ) : null}
+        </DialogContent>
+        <DialogActions>
+          <button
+            type="button"
+            className="modern-btn secondary"
+            onClick={closePreview}
+            aria-label="Close file preview"
+          >
+            <Close fontSize="small" /> Close
+          </button>
+          {previewUrl ? (
+            <a
+              href={previewUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="modern-btn primary"
+              aria-label="Open original file"
+            >
+              Open Original
+            </a>
+          ) : null}
+        </DialogActions>
+      </Dialog>
     </div>
   );
 }
