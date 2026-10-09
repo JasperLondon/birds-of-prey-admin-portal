@@ -1,21 +1,17 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  Box,
-  Button,
-  Dialog,
-  DialogActions,
-  DialogContent,
-  DialogTitle,
-  FormControl,
-  InputLabel,
-  OutlinedInput,
-  MenuItem,
-  Select,
-  TextField,
-  Typography,
+    Box,
+    Button,
+    Dialog,
+    DialogActions,
+    DialogContent,
+    DialogTitle,
+    MenuItem,
+    Select,
+    TextField,
+    Typography,
 } from '@mui/material';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { supabase } from '../supabaseClient';
-import './EsimRequests.scoped.css';
 
 type EsimRequestStatus = 'requested' | 'under_review' | 'approved' | 'cancelled';
 
@@ -209,18 +205,6 @@ const formatStatus = (status: string | null | undefined) => {
   return status.charAt(0).toUpperCase() + status.slice(1);
 };
 
-const statusChipToneClass = (status: string | null | undefined) => {
-  const key = (status || '').toLowerCase();
-  if (key === 'requested') return 'mwd-status-chip requested';
-  if (key === 'under_review') return 'mwd-status-chip under-review';
-  if (key === 'approved') return 'mwd-status-chip approved';
-  if (key === 'cancelled') return 'mwd-status-chip cancelled';
-  if (key === 'passed') return 'mwd-status-chip approved';
-  if (key === 'failed') return 'mwd-status-chip cancelled';
-  if (key === 'pending') return 'mwd-status-chip requested';
-  return 'mwd-status-chip neutral';
-};
-
 const formatDate = (value: string | null | undefined) => {
   if (!value) return 'N/A';
   const dt = new Date(value);
@@ -304,68 +288,7 @@ const formatEdgeFunctionError = async (fnError: unknown, fallbackMessage: string
 };
 
 export default function EsimRequests() {
-  const ACCENT_ORANGE = '#c9782d';
-  const ACCENT_ORANGE_DIM = '#ab621f';
-  const DANGER_RED = '#d25757';
-  const dialogPaperSx = {
-    bgcolor: '#151517',
-    color: '#f3f3f4',
-    borderRadius: 3,
-    border: '1px solid #2b2b2e',
-    boxShadow: 'none',
-  };
-  const dialogTitleSx = {
-    pb: 1,
-    '& .MuiTypography-root': {
-      fontWeight: 690,
-      letterSpacing: 0.1,
-      color: '#f4f4f5',
-    },
-  };
-  const dialogContentSx = {
-    pt: 0.5,
-    '& .MuiTextField-root': { mb: 0.65 },
-    '& .MuiInputLabel-root': { color: '#9fa0a5' },
-    '& .MuiOutlinedInput-root': {
-      bgcolor: '#131315',
-      color: '#f1f1f2',
-      borderRadius: 2,
-      '& fieldset': { borderColor: '#313136' },
-      '&:hover fieldset': { borderColor: '#4a4a50' },
-      '&.Mui-focused fieldset': { borderColor: '#595960' },
-    },
-  };
-  const dialogActionsSx = {
-    px: 3,
-    pb: 2.2,
-    pt: 1,
-    display: 'flex',
-    justifyContent: 'flex-end',
-    gap: 1,
-    flexWrap: 'wrap',
-  };
-  const neutralButtonSx = {
-    textTransform: 'none',
-    borderRadius: 2,
-    borderColor: '#4f4f54',
-    color: '#d6d6da',
-    '&:hover': { borderColor: ACCENT_ORANGE, color: ACCENT_ORANGE },
-  };
-  const primaryButtonSx = {
-    textTransform: 'none',
-    borderRadius: 2,
-    bgcolor: ACCENT_ORANGE,
-    '&:hover': { bgcolor: ACCENT_ORANGE_DIM },
-  };
-  const destructiveButtonSx = {
-    textTransform: 'none',
-    borderRadius: 2,
-    bgcolor: DANGER_RED,
-    '&:hover': { bgcolor: '#bb4a4a' },
-  };
-
   const [statusFilter, setStatusFilter] = useState<string>('requested');
-  const [searchQuery, setSearchQuery] = useState('');
   const [rows, setRows] = useState<EsimRequestRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -396,9 +319,6 @@ export default function EsimRequests() {
   const [recommendAuditOpen, setRecommendAuditOpen] = useState(false);
   const [recommendAuditJson, setRecommendAuditJson] = useState('');
   const [recommendationResponse, setRecommendationResponse] = useState<Record<string, unknown> | null>(null);
-  const [confirmOpen, setConfirmOpen] = useState(false);
-  const [confirmMessage, setConfirmMessage] = useState('');
-  const confirmResolverRef = useRef<((value: boolean) => void) | null>(null);
 
   const deriveProvisioningState = useCallback((input: {
     row: ProvisioningRow | null;
@@ -788,67 +708,6 @@ export default function EsimRequests() {
     return stages;
   }, [lifecycleState, latestValidation?.completed_at, latestValidation?.requested_at, latestValidation?.status, provisioningState?.provisionedAt, selected?.approved_at, selected?.requested_at, selectedSelection?.created_at]);
 
-  const filteredRows = useMemo(() => {
-    const query = searchQuery.trim().toLowerCase();
-    if (!query) return rows;
-
-    return rows.filter((row) => {
-      const athlete = `${row.athlete_name || ''} ${row.athlete_email || ''} ${row.athlete_id || ''}`.toLowerCase();
-      const trip = `${row.trip_name || ''} ${row.trip_id || ''}`.toLowerCase();
-      const destination = `${row.destination_country_code || ''}`.toLowerCase();
-      const residence = `${row.residence_country_code || ''}`.toLowerCase();
-      const status = `${row.status || ''}`.toLowerCase();
-      return athlete.includes(query) || trip.includes(query) || destination.includes(query) || residence.includes(query) || status.includes(query);
-    });
-  }, [rows, searchQuery]);
-
-  const queueSummary = useMemo(() => {
-    let requested = 0;
-    let underReview = 0;
-    let approved = 0;
-    let cancelled = 0;
-
-    rows.forEach((row) => {
-      if (row.status === 'requested') requested += 1;
-      if (row.status === 'under_review') underReview += 1;
-      if (row.status === 'approved') approved += 1;
-      if (row.status === 'cancelled') cancelled += 1;
-    });
-
-    return { requested, underReview, approved, cancelled };
-  }, [rows]);
-
-  const requiredNextStep = useMemo(() => {
-    if (!selected) return 'Select a request to review.';
-    if (selected.status === 'requested') return 'Review assignment and triage request status.';
-    if (selected.status === 'under_review') return 'Approve or cancel after notes and plan checks.';
-    if (selected.status === 'approved') {
-      if (!selectedSelection) return 'Generate recommendation and select a plan.';
-      if (!hasValidationPassed) return 'Validate selected plan before provisioning.';
-      if (!hasProvisionedAssignment) return 'Provision eSIM when validation is passed.';
-      return 'Confirm athlete installation readiness and monitor lifecycle.';
-    }
-    if (selected.status === 'cancelled') return 'No further workflow action required.';
-    return 'Continue review workflow.';
-  }, [hasProvisionedAssignment, hasValidationPassed, selected, selectedSelection]);
-
-  const requestConfirmation = useCallback((message: string) => {
-    return new Promise<boolean>((resolve) => {
-      confirmResolverRef.current = resolve;
-      setConfirmMessage(message);
-      setConfirmOpen(true);
-    });
-  }, []);
-
-  const closeConfirmation = useCallback((answer: boolean) => {
-    setConfirmOpen(false);
-    setConfirmMessage('');
-    if (confirmResolverRef.current) {
-      confirmResolverRef.current(answer);
-      confirmResolverRef.current = null;
-    }
-  }, []);
-
   const fetchQueue = useCallback(async (filter: string) => {
     setLoading(true);
     setError('');
@@ -1139,7 +998,7 @@ export default function EsimRequests() {
     }
 
     if (selectedSelection && selectedSelection.catalog_plan_id !== recommendationPlan.planId) {
-      const confirmed = await requestConfirmation('A selected plan already exists. Replace it with the recommended plan?');
+      const confirmed = window.confirm('A selected plan already exists. Replace it with the recommended plan?');
       if (!confirmed) return;
     }
 
@@ -1150,7 +1009,7 @@ export default function EsimRequests() {
     if (!selected || !planId) return;
 
     if (selectedSelection && selectedSelection.catalog_plan_id !== planId) {
-      const confirmed = await requestConfirmation('A selected plan already exists. Replace it with this alternative plan?');
+      const confirmed = window.confirm('A selected plan already exists. Replace it with this alternative plan?');
       if (!confirmed) return;
     }
 
@@ -1164,7 +1023,7 @@ export default function EsimRequests() {
     }
 
     if (selectedSelection && selectedSelection.catalog_plan_id !== selectedPlanId) {
-      const confirmed = await requestConfirmation('A selected plan already exists. Replace it with this chosen plan?');
+      const confirmed = window.confirm('A selected plan already exists. Replace it with this chosen plan?');
       if (!confirmed) return;
     }
 
@@ -1320,116 +1179,54 @@ export default function EsimRequests() {
   }
 
   return (
-    <div className="mwd-esim-shell">
-      <div className="mwd-esim-command">
-        <div>
-          <h2>eSIM Requests</h2>
-          <p>Review requests, progress provider workflow, and monitor activation readiness.</p>
-        </div>
-      </div>
-
-      <div className="mwd-esim-summary-grid">
-        <div className="mwd-summary-card"><span className="label">Requested</span><strong>{queueSummary.requested}</strong></div>
-        <div className="mwd-summary-card"><span className="label">Under Review</span><strong>{queueSummary.underReview}</strong></div>
-        <div className="mwd-summary-card"><span className="label">Approved</span><strong>{queueSummary.approved}</strong></div>
-        <div className="mwd-summary-card"><span className="label">Cancelled</span><strong>{queueSummary.cancelled}</strong></div>
-      </div>
-
-      <div className="mwd-esim-filters">
-        <div className="mwd-filter-field">
-          <label htmlFor="esim-search">Search</label>
-          <input
-            id="esim-search"
-            className="mwd-control"
-            placeholder="Search athlete, trip, destination, residence, or status"
-            value={searchQuery}
-            onChange={(event) => setSearchQuery(event.target.value)}
-          />
-        </div>
-        <div className="mwd-filter-field">
-          <label htmlFor="esim-status-filter">Status</label>
-          <FormControl size="small" className="mwd-select-wrap">
-            <InputLabel id="esim-status-filter-label">Status</InputLabel>
-            <Select
-              labelId="esim-status-filter-label"
-              id="esim-status-filter"
-              value={statusFilter}
-              label="Status"
-              onChange={(event) => setStatusFilter(event.target.value)}
-              input={<OutlinedInput label="Status" />}
-            >
-              {STATUS_FILTERS.map((filter) => (
-                <MenuItem key={filter.value} value={filter.value}>{filter.label}</MenuItem>
-              ))}
-            </Select>
-          </FormControl>
-        </div>
-        <div className="mwd-filter-spacer" />
-        <span className="mwd-filter-count" aria-live="polite">{filteredRows.length} shown</span>
-        <button
-          className="modern-btn secondary"
-          type="button"
-          onClick={() => {
-            setSearchQuery('');
-            setStatusFilter('requested');
-          }}
+    <Box sx={{ p: 3, color: '#fff' }}>
+      <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2 }}>
+        <Typography variant="h5" sx={{ fontWeight: 700 }}>eSIM Requests</Typography>
+        <Select
+          value={statusFilter}
+          onChange={(event) => setStatusFilter(event.target.value)}
+          size="small"
+          sx={{ minWidth: 180, color: '#fff', borderColor: '#555' }}
         >
-          Clear Filters
-        </button>
-      </div>
+          {STATUS_FILTERS.map((filter) => (
+            <MenuItem key={filter.value} value={filter.value}>{filter.label}</MenuItem>
+          ))}
+        </Select>
+      </Box>
 
-      {error ? <div className="mwd-alert danger">{error}</div> : null}
+      {error ? <Typography sx={{ color: '#ff8a80', mb: 2 }}>{error}</Typography> : null}
 
       {loading ? (
-        <div className="mwd-state-card">
-          <div className="mwd-loading-dot" aria-hidden="true" />
-          <div>
-            <h3>Loading eSIM requests</h3>
-            <p>Pulling latest queue state.</p>
-          </div>
-        </div>
-      ) : filteredRows.length === 0 ? (
-        <div className="mwd-state-card">
-          <div>
-            <h3>No eSIM requests for this filter.</h3>
-            <p>Adjust filters to view matching requests.</p>
-          </div>
-        </div>
+        <Typography>Loading...</Typography>
       ) : (
-        <div className="mwd-esim-table-wrap">
-          <table className="mwd-esim-table">
+        <Box sx={{ background: '#232323', borderRadius: 2, overflow: 'auto' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
             <thead>
               <tr>
-                <th className="mwd-th">Athlete</th>
-                <th className="mwd-th">Trip</th>
-                <th className="mwd-th">Destination</th>
-                <th className="mwd-th">Dates</th>
-                <th className="mwd-th">Residence</th>
-                <th className="mwd-th">Eligibility Snapshot</th>
-                <th className="mwd-th">Request Date</th>
-                <th className="mwd-th">Status</th>
-                <th className="mwd-th">Action</th>
+                <th style={thStyle}>Athlete</th>
+                <th style={thStyle}>Trip</th>
+                <th style={thStyle}>Destination</th>
+                <th style={thStyle}>Dates</th>
+                <th style={thStyle}>Residence</th>
+                <th style={thStyle}>Eligibility Snapshot</th>
+                <th style={thStyle}>Request Date</th>
+                <th style={thStyle}>Status</th>
+                <th style={thStyle}>Action</th>
               </tr>
             </thead>
             <tbody>
-              {filteredRows.map((row) => (
+              {rows.map((row) => (
                 <tr key={row.id}>
-                  <td className="mwd-td">
-                    <div className="mwd-athlete-primary">{row.athlete_name || row.athlete_email || row.athlete_id}</div>
-                    <div className="mwd-athlete-secondary">{row.athlete_email || row.athlete_id}</div>
-                  </td>
-                  <td className="mwd-td">
-                    <div className="mwd-athlete-primary">{row.trip_name || row.trip_id}</div>
-                    <div className="mwd-athlete-secondary">{row.trip_status || 'N/A'}</div>
-                  </td>
-                  <td className="mwd-td">{row.destination_country_code || 'N/A'}</td>
-                  <td className="mwd-td">{formatDateOnly(row.trip_start_date)} - {formatDateOnly(row.trip_end_date)}</td>
-                  <td className="mwd-td">{row.residence_country_code || 'N/A'}</td>
-                  <td className="mwd-td">{row.eligibility_status || 'unknown'} / {row.international_travel ? 'international' : 'not international'}</td>
-                  <td className="mwd-td mwd-time-cell">{formatDate(row.requested_at)}</td>
-                  <td className="mwd-td"><span className={statusChipToneClass(row.status)}>{formatStatus(row.status)}</span></td>
-                  <td className="mwd-td">
-                    <Button size="small" variant="outlined" sx={neutralButtonSx} onClick={() => void openRequest(row)}>
+                  <td style={tdStyle}>{row.athlete_name || row.athlete_email || row.athlete_id}</td>
+                  <td style={tdStyle}>{row.trip_name || row.trip_id}</td>
+                  <td style={tdStyle}>{row.destination_country_code || 'N/A'}</td>
+                  <td style={tdStyle}>{formatDateOnly(row.trip_start_date)} - {formatDateOnly(row.trip_end_date)}</td>
+                  <td style={tdStyle}>{row.residence_country_code || 'N/A'}</td>
+                  <td style={tdStyle}>{row.eligibility_status || 'unknown'} / {row.international_travel ? 'international' : 'not international'}</td>
+                  <td style={tdStyle}>{formatDate(row.requested_at)}</td>
+                  <td style={tdStyle}>{formatStatus(row.status)}</td>
+                  <td style={tdStyle}>
+                    <Button size="small" variant="outlined" color="error" onClick={() => void openRequest(row)}>
                       Open
                     </Button>
                   </td>
@@ -1437,56 +1234,56 @@ export default function EsimRequests() {
               ))}
             </tbody>
           </table>
-        </div>
+
+          {rows.length === 0 ? (
+            <Box sx={{ p: 2 }}>
+              <Typography sx={{ color: '#bdbdbd' }}>No eSIM requests for this filter.</Typography>
+            </Box>
+          ) : null}
+        </Box>
       )}
 
-      <Dialog open={Boolean(selected)} onClose={() => setSelected(null)} maxWidth="lg" fullWidth PaperProps={{ sx: dialogPaperSx }}>
-        <DialogTitle sx={dialogTitleSx}>eSIM Request Review</DialogTitle>
-        <DialogContent sx={dialogContentSx}>
+      <Dialog open={Boolean(selected)} onClose={() => setSelected(null)} maxWidth="md" fullWidth>
+        <DialogTitle>eSIM Request Review</DialogTitle>
+        <DialogContent>
           {selected ? (
-            <Box sx={{ mt: 1 }}>
-              <Box className="mwd-review-summary-grid">
-                <Field label="Who Requested This?" value={selected.athlete_email || selected.athlete_id} />
-                <Field label="Which Athlete?" value={selected.athlete_name || selected.athlete_email || selected.athlete_id} />
-                <Field label="Which Trip?" value={selected.trip_name || selected.trip_id} />
-                <Field label="Destination" value={selected.destination_country_code || 'N/A'} />
-                <Field label="Current Workflow Stage" value={formatStatus(selected.status)} />
-                <Field label="What Action Is Required Next?" value={requiredNextStep} />
+            <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 2, mt: 1 }}>
+              <Field label="Athlete" value={selected.athlete_name || selected.athlete_email || selected.athlete_id} />
+              <Field label="Trip" value={selected.trip_name || selected.trip_id} />
+              <Field label="Trip Dates" value={`${formatDateOnly(selected.trip_start_date)} - ${formatDateOnly(selected.trip_end_date)}`} />
+              <Field label="Trip Status" value={selected.trip_status || 'N/A'} />
+              <Field label="Destination Country" value={selected.destination_country_code || 'N/A'} />
+              <Field label="Residence Country" value={selected.residence_country_code || 'N/A'} />
+              <Field label="Eligibility" value={`${selected.eligibility_status || 'unknown'} / ${selected.international_travel ? 'international' : 'not international'}`} />
+              <Field label="Current Status" value={formatStatus(selected.status)} />
+              <Field label="Assignment Confirmation" value={assignmentConfirmed === null ? 'Checking...' : assignmentConfirmed ? 'Confirmed' : 'Not Confirmed'} />
+              <Field label="Athlete Notes" value={selected.athlete_notes || 'None'} />
+
+              <Box sx={{ gridColumn: '1 / span 2' }}>
+                <TextField
+                  fullWidth
+                  label="Admin Notes"
+                  value={adminNotes}
+                  onChange={(event) => setAdminNotes(event.target.value)}
+                  multiline
+                  minRows={2}
+                />
               </Box>
 
-              <Box className="mwd-dialog-section">
-                <Typography variant="subtitle1" sx={{ fontWeight: 680, mb: 1 }}>Review Notes</Typography>
-                <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: '1fr 1fr' }, gap: 1.25 }}>
-                  <Field label="Trip Dates" value={`${formatDateOnly(selected.trip_start_date)} - ${formatDateOnly(selected.trip_end_date)}`} />
-                  <Field label="Trip Status" value={selected.trip_status || 'N/A'} />
-                  <Field label="Residence Country" value={selected.residence_country_code || 'N/A'} />
-                  <Field label="Eligibility" value={`${selected.eligibility_status || 'unknown'} / ${selected.international_travel ? 'international' : 'not international'}`} />
-                  <Field label="Assignment Confirmation" value={assignmentConfirmed === null ? 'Checking...' : assignmentConfirmed ? 'Confirmed' : 'Not Confirmed'} />
-                  <Field label="Athlete Notes" value={selected.athlete_notes || 'None'} />
-                </Box>
+              <Box sx={{ gridColumn: '1 / span 2' }}>
+                <TextField
+                  fullWidth
+                  label="Cancellation Reason (required when cancelling)"
+                  value={cancelReason}
+                  onChange={(event) => setCancelReason(event.target.value)}
+                />
               </Box>
 
-              <TextField
-                fullWidth
-                label="Admin Notes"
-                value={adminNotes}
-                onChange={(event) => setAdminNotes(event.target.value)}
-                multiline
-                minRows={2}
-              />
-
-              <TextField
-                fullWidth
-                label="Cancellation Reason (required when cancelling)"
-                value={cancelReason}
-                onChange={(event) => setCancelReason(event.target.value)}
-              />
-
-              <Box className="mwd-dialog-section">
+              <Box sx={{ gridColumn: '1 / span 2' }}>
                 <Typography variant="subtitle1" sx={{ fontWeight: 600, mb: 1 }}>Status History</Typography>
-                <Box sx={{ maxHeight: 180, overflowY: 'auto', border: '1px solid #2f3035', borderRadius: 1, p: 1, bgcolor: '#101113' }}>
+                <Box sx={{ maxHeight: 180, overflowY: 'auto', border: '1px solid #ddd', borderRadius: 1, p: 1 }}>
                   {selectedStatusHistory.length === 0 ? (
-                    <Typography variant="body2" sx={{ color: '#b7b7bc' }}>No history yet.</Typography>
+                    <Typography variant="body2">No history yet.</Typography>
                   ) : (
                     selectedStatusHistory.map((h) => (
                       <Box key={h.id} sx={{ py: 0.5 }}>
@@ -1500,67 +1297,47 @@ export default function EsimRequests() {
                 </Box>
               </Box>
 
-              <Box className="mwd-dialog-section">
-                <Typography variant="subtitle1" sx={{ fontWeight: 680, mb: 1 }}>Provider Actions</Typography>
-                <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', mb: 1.25 }}>
-                  <Button variant="outlined" sx={neutralButtonSx} onClick={() => void refreshRequestDetails()} disabled={requestRefreshWorking || !selected}>
-                    {requestRefreshWorking ? 'Refreshing Request...' : 'Refresh Request Data'}
-                  </Button>
-                  <Button variant="outlined" sx={neutralButtonSx} onClick={() => void refreshCatalogue()} disabled={catalogWorking || selected?.status !== 'approved'}>
-                    {catalogWorking ? 'Refreshing...' : 'Refresh Catalogue'}
-                  </Button>
-                  <Button variant="outlined" sx={neutralButtonSx} onClick={() => void recommendPlan(false)} disabled={recommendWorking || selected?.status !== 'approved'}>
-                    {recommendWorking ? 'Recommending...' : 'Recommend Plan'}
-                  </Button>
-                  <Button variant="outlined" sx={neutralButtonSx} onClick={() => void selectChosenPlan()} disabled={recommendWorking || !selectedPlanId || selected?.status !== 'approved'}>
-                    {recommendWorking ? 'Selecting...' : 'Select Chosen Plan'}
-                  </Button>
-                  <Button variant="contained" sx={primaryButtonSx} onClick={() => void validateOrder()} disabled={validateWorking || !selectedPlanForValidation || selected?.status !== 'approved'}>
-                    {validateWorking ? 'Validating...' : 'Validate Order'}
-                  </Button>
-                  <Button variant="contained" color="success" onClick={() => void provisionOrder()} disabled={provisionWorking || (!canProvision && !canRetryProvisioning)}>
-                    {provisionWorking ? 'Provisioning...' : canRetryProvisioning ? 'Retry Provision eSIM' : 'Provision eSIM'}
-                  </Button>
-                </Box>
-
-                <details className="mwd-advanced-tools">
-                  <summary>Advanced Tools</summary>
-                  <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', mt: 1 }}>
-                    <Button variant="outlined" color="warning" onClick={() => void inspectProviderShape()} disabled={providerShapeWorking || selected?.status !== 'approved'}>
-                      {providerShapeWorking ? 'Inspecting...' : 'Inspect Provider Shape'}
-                    </Button>
-                    <Button variant="outlined" color="warning" onClick={() => void inspectRecommendationAudit()} disabled={recommendAuditWorking || selected?.status !== 'approved'}>
-                      {recommendAuditWorking ? 'Inspecting...' : 'Inspect Recommendation Audit'}
-                    </Button>
-                  </Box>
-                </details>
-              </Box>
-
-              <Box className="mwd-dialog-section">
+              <Box sx={{ gridColumn: '1 / span 2', mt: 1 }}>
                 <Typography variant="subtitle1" sx={{ fontWeight: 600, mb: 1 }}>Plan & Cost</Typography>
-                <Box sx={{ border: '1px solid #2f3035', borderRadius: 1, p: 1.5, bgcolor: '#101113' }}>
-                  <Typography variant="body2" sx={{ fontWeight: 700, mb: 1 }}>Workflow Status: {workflowStatusLabel}</Typography>
+                <Box sx={{ border: '1px solid #ddd', borderRadius: 1, p: 1.5 }}>
+                  <Typography variant="body2" sx={{ fontWeight: 700, mb: 1 }}>
+                    Workflow Status: {workflowStatusLabel}
+                  </Typography>
                   <Typography variant="caption" sx={{ display: 'block', mb: 1.25, color: '#bdbdbd' }}>
                     Requested {'->'} Approved {'->'} Recommendation Ready {'->'} Selected {'->'} Validation Passed {'->'} Provisioning {'->'} Provisioned {'->'} Ready for Athlete Installation
                   </Typography>
-                  <Typography variant="body2" sx={{ mb: 1 }}>Catalogue fetched: {catalogFetchedAt ? formatDate(catalogFetchedAt) : 'Not fetched yet'}</Typography>
+                  <Typography variant="body2" sx={{ mb: 1 }}>
+                    Catalogue fetched: {catalogFetchedAt ? formatDate(catalogFetchedAt) : 'Not fetched yet'}
+                  </Typography>
 
                   {recommendationPlan ? (
                     <Box sx={{ mb: 1.5 }}>
                       <Typography variant="body2" sx={{ fontWeight: 700 }}>Recommended Plan</Typography>
                       <Typography variant="body2">{recommendationPlan.name || 'Unknown plan'}</Typography>
-                      <Typography variant="caption" sx={{ display: 'block' }}>Provider Bundle ID: {recommendationPlan.providerBundleId || 'N/A'}</Typography>
+                      <Typography variant="caption" sx={{ display: 'block' }}>
+                        Provider Bundle ID: {recommendationPlan.providerBundleId || 'N/A'}
+                      </Typography>
                       <Typography variant="caption" sx={{ display: 'block' }}>
                         Data: {recommendationPlan.dataAllowance || 'N/A'} · Validity: {recommendationPlan.validityDays ?? 'N/A'} days · Price: {recommendationPlan.priceAmount ?? 'N/A'} {recommendationPlan.priceCurrency || ''}
                       </Typography>
                       <Typography variant="caption" sx={{ display: 'block' }}>
                         Destination: {recommendationContext.destinationCountryCode || 'N/A'} · Trip Duration: {recommendationContext.tripDurationDays ?? 'N/A'} days
                       </Typography>
-                      <Typography variant="caption" sx={{ display: 'block' }}>Compromise: {recommendationPlan.isCompromise ? 'Yes' : 'No'}</Typography>
+                      <Typography variant="caption" sx={{ display: 'block' }}>
+                        Compromise: {recommendationPlan.isCompromise ? 'Yes' : 'No'}
+                      </Typography>
                       {recommendationPlan.recommendationReason ? (
-                        <Typography variant="caption" sx={{ display: 'block' }}>Reason: {recommendationPlan.recommendationReason}</Typography>
+                        <Typography variant="caption" sx={{ display: 'block' }}>
+                          Reason: {recommendationPlan.recommendationReason}
+                        </Typography>
                       ) : null}
-                      <Button variant="contained" sx={{ ...primaryButtonSx, mt: 1 }} onClick={() => void applyRecommendedPlan()} disabled={recommendWorking || selected?.status !== 'approved'}>
+                      <Button
+                        variant="contained"
+                        color="primary"
+                        sx={{ mt: 1 }}
+                        onClick={() => void applyRecommendedPlan()}
+                        disabled={recommendWorking || selected?.status !== 'approved'}
+                      >
                         Use Recommended Plan
                       </Button>
                     </Box>
@@ -1573,7 +1350,9 @@ export default function EsimRequests() {
                     {selectedSelection ? (
                       <>
                         <Typography variant="body2">{selectedSelection.plan_name_snapshot}</Typography>
-                        <Typography variant="caption" sx={{ display: 'block' }}>Provider Bundle ID: {selectedSelection.provider_bundle_id_snapshot}</Typography>
+                        <Typography variant="caption" sx={{ display: 'block' }}>
+                          Provider Bundle ID: {selectedSelection.provider_bundle_id_snapshot}
+                        </Typography>
                         <Typography variant="caption" sx={{ display: 'block' }}>
                           {selectedSelection.data_allowance_snapshot} · {selectedSelection.validity_days_snapshot} days · {selectedSelection.estimated_price_amount ?? 'N/A'} {selectedSelection.estimated_price_currency || ''}
                         </Typography>
@@ -1595,7 +1374,13 @@ export default function EsimRequests() {
                           <Typography variant="caption" sx={{ display: 'block' }}>
                             Meets validity: {alt.meetsValidity === null ? 'Unknown' : alt.meetsValidity ? 'Yes' : 'No'} · Meets data: {alt.meetsDataRequirement === null ? 'Unknown' : alt.meetsDataRequirement ? 'Yes' : 'No'}
                           </Typography>
-                          <Button variant="outlined" size="small" sx={{ ...neutralButtonSx, mt: 0.5 }} onClick={() => void selectAlternativePlan(alt.planId)} disabled={recommendWorking || selected?.status !== 'approved'}>
+                          <Button
+                            variant="outlined"
+                            size="small"
+                            sx={{ mt: 0.5 }}
+                            onClick={() => void selectAlternativePlan(alt.planId)}
+                            disabled={recommendWorking || selected?.status !== 'approved'}
+                          >
                             Select This Alternative
                           </Button>
                         </Box>
@@ -1621,43 +1406,129 @@ export default function EsimRequests() {
                     ))}
                   </TextField>
 
+                  <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', mb: 1.5 }}>
+                    <Button
+                      variant="outlined"
+                      onClick={() => void refreshRequestDetails()}
+                      disabled={requestRefreshWorking || !selected}
+                    >
+                      {requestRefreshWorking ? 'Refreshing Request...' : 'Refresh Request Data'}
+                    </Button>
+                    <Button
+                      variant="outlined"
+                      onClick={() => void refreshCatalogue()}
+                      disabled={catalogWorking || selected?.status !== 'approved'}
+                    >
+                      {catalogWorking ? 'Refreshing...' : 'Refresh Catalogue'}
+                    </Button>
+                    <Button
+                      variant="outlined"
+                      color="warning"
+                      onClick={() => void inspectProviderShape()}
+                      disabled={providerShapeWorking || selected?.status !== 'approved'}
+                    >
+                      {providerShapeWorking ? 'Inspecting...' : 'Inspect Provider Shape (Debug Only)'}
+                    </Button>
+                    <Button
+                      variant="outlined"
+                      onClick={() => void recommendPlan(false)}
+                      disabled={recommendWorking || selected?.status !== 'approved'}
+                    >
+                      {recommendWorking ? 'Recommending...' : 'Recommend Plan'}
+                    </Button>
+                    <Button
+                      variant="outlined"
+                      color="warning"
+                      onClick={() => void inspectRecommendationAudit()}
+                      disabled={recommendAuditWorking || selected?.status !== 'approved'}
+                    >
+                      {recommendAuditWorking ? 'Inspecting...' : 'Inspect Recommendation Audit (Debug Only)'}
+                    </Button>
+                    <Button
+                      variant="outlined"
+                      onClick={() => void selectChosenPlan()}
+                      disabled={recommendWorking || !selectedPlanId || selected?.status !== 'approved'}
+                    >
+                      {recommendWorking ? 'Selecting...' : 'Select Chosen Plan'}
+                    </Button>
+                    <Button
+                      variant="contained"
+                      color="warning"
+                      onClick={() => void validateOrder()}
+                      disabled={validateWorking || !selectedPlanForValidation || selected?.status !== 'approved'}
+                    >
+                      {validateWorking ? 'Validating...' : 'Validate Order'}
+                    </Button>
+                    <Button
+                      variant="contained"
+                      color="success"
+                      onClick={() => void provisionOrder()}
+                      disabled={provisionWorking || (!canProvision && !canRetryProvisioning)}
+                    >
+                      {provisionWorking ? 'Provisioning...' : canRetryProvisioning ? 'Retry Provision eSIM' : 'Provision eSIM'}
+                    </Button>
+                  </Box>
+
                   <Box>
                     <Typography variant="body2" sx={{ fontWeight: 700 }}>Validation Result</Typography>
                     {latestValidation ? (
                       <>
                         <Typography variant="body2">Status: {formatStatus(latestValidation.status)}</Typography>
                         <Typography variant="body2">Cost: {latestValidation.validated_price_amount ?? 'N/A'} {latestValidation.validated_price_currency || ''}</Typography>
-                        <Typography variant="body2">Balance: {latestValidation.balance_sufficient === null ? 'Unknown' : latestValidation.balance_sufficient ? 'Sufficient' : 'Insufficient'}</Typography>
+                        <Typography variant="body2">
+                          Balance: {latestValidation.balance_sufficient === null ? 'Unknown' : latestValidation.balance_sufficient ? 'Sufficient' : 'Insufficient'}
+                        </Typography>
                         <Typography variant="body2">Validated At: {formatDate(latestValidation.completed_at || latestValidation.requested_at)}</Typography>
-                        {latestValidation.provider_error_message ? <Typography variant="caption">Provider-safe error: {latestValidation.provider_error_message}</Typography> : null}
-                        {latestValidation.status === 'passed' ? <Typography variant="body2" sx={{ mt: 0.5, fontWeight: 700 }}>Validation passed</Typography> : null}
+                        {latestValidation.provider_error_message ? (
+                          <Typography variant="caption">Provider-safe error: {latestValidation.provider_error_message}</Typography>
+                        ) : null}
+                        {latestValidation.status === 'passed' ? (
+                          <Typography variant="body2" sx={{ mt: 0.5, fontWeight: 700 }}>
+                            Validation passed
+                          </Typography>
+                        ) : null}
                       </>
                     ) : (
                       <Typography variant="body2">Validation has not been run yet.</Typography>
                     )}
                   </Box>
-                </Box>
-              </Box>
-
-              <Box className="mwd-dialog-section">
-                <Typography variant="subtitle1" sx={{ fontWeight: 600, mb: 1 }}>Lifecycle</Typography>
-                <Box sx={{ border: '1px solid #2f3035', borderRadius: 1, p: 1.5, bgcolor: '#101113' }}>
-                  <Typography variant="body2" sx={{ fontWeight: 700, mb: 0.5 }}>Provisioning</Typography>
-                  <Typography variant="body2">Current provisioning status: {provisioningStatusLabel}</Typography>
-                  <Typography variant="body2">Order reference: {provisioningState?.providerOrderReference || latestValidation?.provider_order_reference || 'N/A'}</Typography>
-                  <Typography variant="body2">ICCID: {provisioningState?.iccid || 'N/A'}</Typography>
-                  <Typography variant="body2">Matching ID: {provisioningState?.matchingId || 'N/A'}</Typography>
-                  <Typography variant="body2">Activation code available: {provisioningState?.activationCodeAvailable === null ? 'Unknown' : provisioningState?.activationCodeAvailable ? 'Yes' : 'No'}</Typography>
-                  <Typography variant="body2">QR available: {provisioningState?.qrAvailable === null ? 'Unknown' : provisioningState?.qrAvailable ? 'Yes' : 'No'}</Typography>
-                  <Typography variant="body2">Provisioned timestamp: {formatDate(provisioningState?.provisionedAt || null)}</Typography>
-                  <Typography variant="body2" sx={{ fontWeight: 700, color: provisioningState?.readyForAthleteInstallation ? '#81c784' : '#e0e0e0' }}>
-                    {provisioningState?.readyForAthleteInstallation ? 'Ready for Athlete Installation' : 'Not ready for athlete installation'}
-                  </Typography>
-                  {provisioningState?.providerError ? <Typography variant="caption" sx={{ color: '#ff8a80', display: 'block', mt: 0.5 }}>Provider error: {provisioningState.providerError}</Typography> : null}
-                  {hasProvisionedAssignment ? <Typography variant="caption" sx={{ color: '#81c784', display: 'block', mt: 0.5 }}>Existing assignment detected. Provisioning retry is disabled.</Typography> : null}
 
                   <Box sx={{ mt: 1.5, pt: 1.5, borderTop: '1px solid #444' }}>
-                    {lifecycleReadIssue ? <Typography variant="caption" sx={{ color: '#ffb74d', display: 'block', mb: 1 }}>{lifecycleReadIssue}</Typography> : null}
+                    <Typography variant="body2" sx={{ fontWeight: 700, mb: 0.5 }}>Provisioning</Typography>
+                    <Typography variant="body2">Current provisioning status: {provisioningStatusLabel}</Typography>
+                    <Typography variant="body2">Order reference: {provisioningState?.providerOrderReference || latestValidation?.provider_order_reference || 'N/A'}</Typography>
+                    <Typography variant="body2">ICCID: {provisioningState?.iccid || 'N/A'}</Typography>
+                    <Typography variant="body2">Matching ID: {provisioningState?.matchingId || 'N/A'}</Typography>
+                    <Typography variant="body2">
+                      Activation code available: {provisioningState?.activationCodeAvailable === null ? 'Unknown' : provisioningState?.activationCodeAvailable ? 'Yes' : 'No'}
+                    </Typography>
+                    <Typography variant="body2">
+                      QR available: {provisioningState?.qrAvailable === null ? 'Unknown' : provisioningState?.qrAvailable ? 'Yes' : 'No'}
+                    </Typography>
+                    <Typography variant="body2">Provisioned timestamp: {formatDate(provisioningState?.provisionedAt || null)}</Typography>
+                    <Typography variant="body2" sx={{ fontWeight: 700, color: provisioningState?.readyForAthleteInstallation ? '#81c784' : '#e0e0e0' }}>
+                      {provisioningState?.readyForAthleteInstallation ? 'Ready for Athlete Installation' : 'Not ready for athlete installation'}
+                    </Typography>
+                    {provisioningState?.providerError ? (
+                      <Typography variant="caption" sx={{ color: '#ff8a80', display: 'block', mt: 0.5 }}>
+                        Provider error: {provisioningState.providerError}
+                      </Typography>
+                    ) : null}
+                    {hasProvisionedAssignment ? (
+                      <Typography variant="caption" sx={{ color: '#81c784', display: 'block', mt: 0.5 }}>
+                        Existing assignment detected. Provisioning retry is disabled.
+                      </Typography>
+                    ) : null}
+                  </Box>
+
+                  <Box sx={{ mt: 1.5, pt: 1.5, borderTop: '1px solid #444' }}>
+                    <Typography variant="body2" sx={{ fontWeight: 700, mb: 0.5 }}>Lifecycle</Typography>
+
+                    {lifecycleReadIssue ? (
+                      <Typography variant="caption" sx={{ color: '#ffb74d', display: 'block', mb: 1 }}>
+                        {lifecycleReadIssue}
+                      </Typography>
+                    ) : null}
 
                     {lifecycleState?.exists ? (
                       <>
@@ -1680,7 +1551,11 @@ export default function EsimRequests() {
                         <Typography variant="body2">Bundle expiry: {formatDate(lifecycleState.bundleExpiry)}</Typography>
                         <Typography variant="body2">Expired at: {formatDate(lifecycleState.expiredAt)}</Typography>
 
-                        {lifecycleState.isMock ? <Typography variant="caption" sx={{ color: '#ffb74d', fontWeight: 700, display: 'block', mt: 1 }}>{lifecycleState.mockWarning}</Typography> : null}
+                        {lifecycleState.isMock ? (
+                          <Typography variant="caption" sx={{ color: '#ffb74d', fontWeight: 700, display: 'block', mt: 1 }}>
+                            {lifecycleState.mockWarning}
+                          </Typography>
+                        ) : null}
                       </>
                     ) : (
                       <Typography variant="body2">Lifecycle not started</Typography>
@@ -1692,7 +1567,11 @@ export default function EsimRequests() {
                         {lifecycleTimeline.map((stage) => (
                           <Box key={stage.label} sx={{ mb: 0.75 }}>
                             <Typography variant="body2" sx={{ fontWeight: 600 }}>{stage.label}</Typography>
-                            {stage.timestamp ? <Typography variant="caption" sx={{ color: '#bdbdbd' }}>{formatDate(stage.timestamp)}</Typography> : null}
+                            {stage.timestamp ? (
+                              <Typography variant="caption" sx={{ color: '#bdbdbd' }}>
+                                {formatDate(stage.timestamp)}
+                              </Typography>
+                            ) : null}
                           </Box>
                         ))}
                       </Box>
@@ -1700,81 +1579,119 @@ export default function EsimRequests() {
                   </Box>
                 </Box>
               </Box>
+
+              <Box sx={{ gridColumn: '1 / span 2', mt: 1 }}>
+                <Typography variant="caption" sx={{ color: '#ffb74d', fontWeight: 700 }}>
+                  DEBUG ONLY - Remove after Phase 2 catalogue parser validation.
+                </Typography>
+              </Box>
             </Box>
           ) : null}
         </DialogContent>
-        <DialogActions sx={{ ...dialogActionsSx, justifyContent: 'space-between' }}>
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
-            <Typography sx={{ color: '#9fa0a5', fontSize: 12, textTransform: 'uppercase', letterSpacing: 0.55 }}>Review Actions</Typography>
-            <Button sx={neutralButtonSx} variant="outlined" onClick={() => void submitReview('under_review')} disabled={reviewing || !selected || selected.status === 'under_review' || selected.status === 'approved' || selected.status === 'cancelled'}>
-              Mark Under Review
-            </Button>
-            <Button color="success" variant="contained" onClick={() => void submitReview('approved')} disabled={reviewing || !selected || selected.status === 'approved' || selected.status === 'cancelled'}>
-              Approve
-            </Button>
-            <Button sx={destructiveButtonSx} variant="contained" onClick={() => void submitReview('cancelled')} disabled={reviewing || !selected || selected.status === 'cancelled'}>
-              Cancel Request
-            </Button>
-          </Box>
-          <Button sx={neutralButtonSx} variant="outlined" onClick={() => setSelected(null)} disabled={reviewing}>Close</Button>
+        <DialogActions>
+          <Button onClick={() => setSelected(null)} disabled={reviewing}>Close</Button>
+          <Button onClick={() => void submitReview('under_review')} disabled={reviewing || !selected || selected.status === 'under_review' || selected.status === 'approved' || selected.status === 'cancelled'}>
+            Mark Under Review
+          </Button>
+          <Button color="success" onClick={() => void submitReview('approved')} disabled={reviewing || !selected || selected.status === 'approved' || selected.status === 'cancelled'}>
+            Approve
+          </Button>
+          <Button color="error" onClick={() => void submitReview('cancelled')} disabled={reviewing || !selected || selected.status === 'cancelled'}>
+            Cancel Request
+          </Button>
         </DialogActions>
       </Dialog>
 
-      <Dialog open={confirmOpen} onClose={() => closeConfirmation(false)} maxWidth="xs" fullWidth PaperProps={{ sx: dialogPaperSx }}>
-        <DialogTitle sx={dialogTitleSx}>Confirm Action</DialogTitle>
-        <DialogContent sx={dialogContentSx}>
-          <Typography>{confirmMessage}</Typography>
-        </DialogContent>
-        <DialogActions sx={dialogActionsSx}>
-          <Button variant="outlined" sx={neutralButtonSx} onClick={() => closeConfirmation(false)}>Cancel</Button>
-          <Button variant="contained" sx={primaryButtonSx} onClick={() => closeConfirmation(true)}>Confirm</Button>
-        </DialogActions>
-      </Dialog>
-
-      <Dialog open={providerShapeOpen} onClose={() => setProviderShapeOpen(false)} maxWidth="md" fullWidth PaperProps={{ sx: dialogPaperSx }}>
-        <DialogTitle sx={dialogTitleSx}>Inspect Provider Shape (Debug Only)</DialogTitle>
-        <DialogContent sx={dialogContentSx}>
+      <Dialog open={providerShapeOpen} onClose={() => setProviderShapeOpen(false)} maxWidth="md" fullWidth>
+        <DialogTitle>Inspect Provider Shape (Debug Only)</DialogTitle>
+        <DialogContent>
           <Typography variant="caption" sx={{ color: '#ffb74d', fontWeight: 700, display: 'block', mb: 1 }}>
             DEBUG ONLY - Remove after Phase 2 catalogue parser validation.
           </Typography>
           <Typography variant="body2" sx={{ mb: 1 }}>
             Showing only safe summary fields. Raw provider payloads and secrets are intentionally excluded.
           </Typography>
-          <Box component="pre" sx={{ m: 0, p: 1.5, borderRadius: 1, bgcolor: '#121212', color: '#e0e0e0', maxHeight: 420, overflow: 'auto', whiteSpace: 'pre-wrap', wordBreak: 'break-word', border: '1px solid #333' }}>
+          <Box
+            component="pre"
+            sx={{
+              m: 0,
+              p: 1.5,
+              borderRadius: 1,
+              bgcolor: '#121212',
+              color: '#e0e0e0',
+              maxHeight: 420,
+              overflow: 'auto',
+              whiteSpace: 'pre-wrap',
+              wordBreak: 'break-word',
+              border: '1px solid #333',
+            }}
+          >
             {providerShapeJson || '{}'}
           </Box>
         </DialogContent>
-        <DialogActions sx={dialogActionsSx}>
-          <Button variant="outlined" sx={neutralButtonSx} onClick={() => setProviderShapeOpen(false)}>Close</Button>
+        <DialogActions>
+          <Button onClick={() => setProviderShapeOpen(false)}>Close</Button>
         </DialogActions>
       </Dialog>
 
-      <Dialog open={recommendAuditOpen} onClose={() => setRecommendAuditOpen(false)} maxWidth="md" fullWidth PaperProps={{ sx: dialogPaperSx }}>
-        <DialogTitle sx={dialogTitleSx}>Inspect Recommendation Audit (Debug Only)</DialogTitle>
-        <DialogContent sx={dialogContentSx}>
+      <Dialog open={recommendAuditOpen} onClose={() => setRecommendAuditOpen(false)} maxWidth="md" fullWidth>
+        <DialogTitle>Inspect Recommendation Audit (Debug Only)</DialogTitle>
+        <DialogContent>
+          <Typography variant="caption" sx={{ color: '#ffb74d', fontWeight: 700, display: 'block', mb: 1 }}>
+            DEBUG ONLY
+          </Typography>
           <Typography variant="caption" sx={{ color: '#ffb74d', fontWeight: 700, display: 'block', mb: 1.5 }}>
-            DEBUG ONLY - Remove after recommendation validation.
+            Remove after recommendation validation.
           </Typography>
           <Typography variant="body2" sx={{ mb: 1 }}>
             Full safe audit response (pretty-printed). Sensitive fields and raw provider payloads are redacted.
           </Typography>
-          <Box component="pre" sx={{ m: 0, p: 1.5, borderRadius: 1, bgcolor: '#121212', color: '#e0e0e0', maxHeight: 420, overflow: 'auto', whiteSpace: 'pre-wrap', wordBreak: 'break-word', border: '1px solid #333' }}>
+          <Box
+            component="pre"
+            sx={{
+              m: 0,
+              p: 1.5,
+              borderRadius: 1,
+              bgcolor: '#121212',
+              color: '#e0e0e0',
+              maxHeight: 420,
+              overflow: 'auto',
+              whiteSpace: 'pre-wrap',
+              wordBreak: 'break-word',
+              border: '1px solid #333',
+            }}
+          >
             {recommendAuditJson || '{}'}
           </Box>
         </DialogContent>
-        <DialogActions sx={dialogActionsSx}>
-          <Button variant="outlined" sx={neutralButtonSx} onClick={() => setRecommendAuditOpen(false)}>Close</Button>
+        <DialogActions>
+          <Button onClick={() => setRecommendAuditOpen(false)}>Close</Button>
         </DialogActions>
       </Dialog>
-    </div>
+    </Box>
   );
 }
 
 function Field({ label, value }: { label: string; value: string }) {
   return (
-    <Box className="mwd-field-card">
-      <Typography variant="caption" sx={{ color: '#8f9096', letterSpacing: 0.38 }}>{label}</Typography>
-      <Typography variant="body2" sx={{ color: '#ececee', fontWeight: 620 }}>{value}</Typography>
+    <Box sx={{ background: '#f8f8f8', borderRadius: 1, p: 1.5 }}>
+      <Typography variant="caption" sx={{ color: '#666' }}>{label}</Typography>
+      <Typography variant="body2" sx={{ color: '#111', fontWeight: 600 }}>{value}</Typography>
     </Box>
   );
 }
+
+const thStyle: React.CSSProperties = {
+  padding: 8,
+  textAlign: 'left',
+  borderBottom: '1px solid #444',
+  color: '#fff',
+  background: '#1f1f1f',
+};
+
+const tdStyle: React.CSSProperties = {
+  padding: 8,
+  borderBottom: '1px solid #333',
+  color: '#fff',
+  verticalAlign: 'top',
+};

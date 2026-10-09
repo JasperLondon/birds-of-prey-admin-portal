@@ -123,6 +123,8 @@ interface ContentItem {
   contract_id: string | null;
   due_period: string | null;
   status: string;
+  is_assignment_instruction?: boolean | null;
+  assignment_id?: string | null;
   feedback?: string | null;
   reviewed_at?: string | null;
   created_at?: string;
@@ -134,6 +136,7 @@ interface ContractOption { id: string; title: string; }
 
 const typeOptions = ['image', 'video', 'document', 'link'];
 const statusOptions = ['draft', 'submitted', 'reviewed', 'needs_changes', 'approved', 'completed', 'fulfilled'];
+type PurposeMode = 'assign' | 'record';
 
 function formatStatusLabel(value: string) {
   return value.replace('_', ' ').replace(/\b\w/g, (ch) => ch.toUpperCase());
@@ -160,8 +163,9 @@ export default function Content() {
   const [showModal, setShowModal] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState<Omit<ContentItem, 'id' | 'created_at'>>({
-    title: '', type: 'image', description: '', file_url: '', external_url: '', athlete_id: '', contract_id: '', due_period: '', status: 'submitted'
+    title: '', type: 'image', description: '', file_url: '', external_url: '', athlete_id: '', contract_id: '', due_period: '', status: 'submitted', is_assignment_instruction: false, assignment_id: null
   });
+  const [purposeMode, setPurposeMode] = useState<PurposeMode>('record');
   const [search, setSearch] = useState({ title: '', type: '', status: '' });
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
@@ -263,7 +267,8 @@ export default function Content() {
 
   function startAdd() {
     setEditingId(null);
-    setForm({ title: '', type: 'image', description: '', file_url: '', external_url: '', athlete_id: '', contract_id: '', due_period: '', status: 'submitted' });
+    setForm({ title: '', type: 'image', description: '', file_url: '', external_url: '', athlete_id: '', contract_id: '', due_period: '', status: 'submitted', is_assignment_instruction: false, assignment_id: null });
+    setPurposeMode('record');
     setShowModal(true);
     setError('');
     setFormErrors({});
@@ -271,7 +276,12 @@ export default function Content() {
 
   function startEdit(item: ContentItem) {
     setEditingId(item.id);
-    setForm({ ...item });
+    setForm({
+      ...item,
+      is_assignment_instruction: Boolean(item.is_assignment_instruction),
+      assignment_id: item.assignment_id || null,
+    });
+    setPurposeMode(item.is_assignment_instruction ? 'assign' : 'record');
     setShowModal(true);
     setError('');
     setFormErrors({});
@@ -280,9 +290,61 @@ export default function Content() {
   function handleModalClose() {
     setShowModal(false);
     setEditingId(null);
-    setForm({ title: '', type: 'image', description: '', file_url: '', external_url: '', athlete_id: '', contract_id: '', due_period: '', status: 'submitted' });
+    setForm({ title: '', type: 'image', description: '', file_url: '', external_url: '', athlete_id: '', contract_id: '', due_period: '', status: 'submitted', is_assignment_instruction: false, assignment_id: null });
+    setPurposeMode('record');
     setError('');
     setFormErrors({});
+  }
+
+  async function createAssignmentArtifacts(input: {
+    contentId: string;
+    athleteId: string;
+    contractId: string | null;
+    duePeriod: string | null;
+    status: string;
+  }) {
+    const taskPayload: Record<string, unknown> = {
+      content_id: input.contentId,
+      athlete_id: input.athleteId,
+      due_period: input.duePeriod,
+      status: input.status,
+    };
+    if (input.contractId) taskPayload.contract_id = input.contractId;
+
+    const { data: taskRow, error: taskError } = await supabase
+      .from('content_tasks')
+      .insert([taskPayload])
+      .select('id')
+      .single();
+
+    if (taskError || !taskRow?.id) {
+      throw new Error(taskError?.message || 'Failed to create content task.');
+    }
+
+    const assignmentPayload: Record<string, unknown> = {
+      content_id: input.contentId,
+      content_task_id: taskRow.id,
+      athlete_id: input.athleteId,
+    };
+
+    const { data: assignmentRow, error: assignmentError } = await supabase
+      .from('content_assignments')
+      .insert([assignmentPayload])
+      .select('id')
+      .single();
+
+    if (assignmentError || !assignmentRow?.id) {
+      throw new Error(assignmentError?.message || 'Failed to create content assignment.');
+    }
+
+    const { error: linkError } = await supabase
+      .from('content')
+      .update({ assignment_id: assignmentRow.id })
+      .eq('id', input.contentId);
+
+    if (linkError) {
+      throw new Error(linkError.message || 'Failed to link assignment to content instruction.');
+    }
   }
 
   async function handleDelete(id: string) {
@@ -362,23 +424,67 @@ export default function Content() {
       return;
     }
     try {
+      const isAssignmentInstruction = purposeMode === 'assign';
       // If file input is present and a file is selected, upload it
       if (form.type !== 'link' && fileInputRef.current && fileInputRef.current.files && fileInputRef.current.files[0]) {
         const fileUrl = await handleFileUpload(fileInputRef.current.files[0]);
         form.file_url = fileUrl;
       }
+
+      const payload = {
+        ...form,
+        is_assignment_instruction: isAssignmentInstruction,
+      };
+
       if (editingId) {
-        const { error } = await supabase.from('content').update(form).eq('id', editingId);
-        if (error) setError(error.message);
-        else {
+        const { error: updateError } = await supabase.from('content').update(payload).eq('id', editingId);
+        if (updateError) {
+          setError(updateError.message);
+        } else {
+          if (isAssignmentInstruction && form.athlete_id && !form.assignment_id) {
+            try {
+              await createAssignmentArtifacts({
+                contentId: editingId,
+                athleteId: form.athlete_id,
+                contractId: form.contract_id || null,
+                duePeriod: form.due_period || null,
+                status: form.status,
+              });
+            } catch (assignmentError: any) {
+              setError(assignmentError?.message || 'Assignment workflow failed after content update.');
+              setSaving(false);
+              return;
+            }
+          }
           setShowModal(false);
           setFormErrors({});
           fetchAll();
         }
       } else {
-        const { error } = await supabase.from('content').insert([{ ...form }]);
-        if (error) setError(error.message);
-        else {
+        const { data: inserted, error: insertError } = await supabase
+          .from('content')
+          .insert([{ ...payload }])
+          .select('id, athlete_id, contract_id, due_period, status')
+          .single();
+
+        if (insertError || !inserted) {
+          setError(insertError?.message || 'Failed to create content.');
+        } else {
+          if (isAssignmentInstruction && inserted.athlete_id) {
+            try {
+              await createAssignmentArtifacts({
+                contentId: inserted.id,
+                athleteId: inserted.athlete_id,
+                contractId: inserted.contract_id || null,
+                duePeriod: inserted.due_period || null,
+                status: inserted.status || 'submitted',
+              });
+            } catch (assignmentError: any) {
+              setError(assignmentError?.message || 'Assignment workflow failed after content creation.');
+              setSaving(false);
+              return;
+            }
+          }
           setShowModal(false);
           setFormErrors({});
           fetchAll();
@@ -902,6 +1008,27 @@ export default function Content() {
               </select>
               <span style={{ color: '#e53935', fontSize: 13, minHeight: 18, display: 'block' }}>{formErrors.type || ''}</span>
               <span style={{ color: '#bdbdbd', fontSize: 12, marginBottom: -8 }}>Select the content type.</span>
+
+              <label style={{ color: '#d6d6da', fontWeight: 500 }}>Purpose *</label>
+              <select
+                value={purposeMode}
+                onChange={e => setPurposeMode(e.target.value as PurposeMode)}
+                style={{
+                  padding: 6,
+                  borderRadius: 4,
+                  border: '1px solid #444',
+                  background: '#131315',
+                  color: '#fff',
+                  marginBottom: 2,
+                }}
+                aria-label="Purpose"
+              >
+                <option value="assign">Assign Content</option>
+                <option value="record">Record Content</option>
+              </select>
+              <span style={{ color: '#bdbdbd', fontSize: 12, marginBottom: -8 }}>
+                Assign Content creates assignment records and links them to the instruction. Record Content keeps the existing workflow.
+              </span>
 
               <label style={{ color: '#d6d6da', fontWeight: 500 }}>Description</label>
               <textarea
