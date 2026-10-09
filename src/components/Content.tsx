@@ -15,6 +15,38 @@ const SIGNED_URL_TTL_SECONDS = 60;
 const SIGNED_URL_REFRESH_GRACE_MS = 5000;
 const signedUrlCache = new Map<string, { signedUrl: string; expiresAt: number }>();
 
+type ClassifiedFileType = 'image' | 'video' | 'document' | 'other';
+
+function normalizeContentType(rawType: string | null | undefined): string {
+  return (rawType || '').trim().toLowerCase();
+}
+
+function classifyContentType(rawType: string | null | undefined): ClassifiedFileType {
+  const normalized = normalizeContentType(rawType);
+  if (normalized === 'image' || normalized.startsWith('image/')) return 'image';
+  if (normalized === 'video' || normalized.startsWith('video/')) return 'video';
+  if (normalized === 'document') return 'document';
+  return 'other';
+}
+
+function getFileExtension(fileUrl: string | null | undefined): string {
+  const value = (fileUrl || '').trim();
+  if (!value) return '';
+
+  const direct = parseHttpUrl(value);
+  if (direct) {
+    const extFromPath = direct.pathname.split('.').pop() || '';
+    return extFromPath.toLowerCase();
+  }
+
+  const withoutQuery = value.split('#')[0].split('?')[0];
+  return (withoutQuery.split('.').pop() || '').toLowerCase();
+}
+
+function isPdfFile(fileUrl: string | null | undefined): boolean {
+  return getFileExtension(fileUrl) === 'pdf';
+}
+
 function parseHttpUrl(value: string): URL | null {
   try {
     const url = new URL(value);
@@ -139,8 +171,10 @@ function FilePreview({ fileUrl, type }: { fileUrl: string, type: string }) {
     }
   }
 
+  const classifiedType = classifyContentType(type);
+
   if (error) return <span style={{ color: '#d32f2f', marginRight: 8 }}>{error}</span>;
-  if (!previewUrl && (type === 'image' || type === 'video')) return <span style={{ color: '#90caf9', marginRight: 8 }}>Loading...</span>;
+  if (!previewUrl && (classifiedType === 'image' || classifiedType === 'video')) return <span style={{ color: '#90caf9', marginRight: 8 }}>Loading...</span>;
 
   // Document and fallback icons (SVG inline)
   const iconStyle = { width: 40, height: 40, marginRight: 8, verticalAlign: 'middle' };
@@ -168,7 +202,7 @@ function FilePreview({ fileUrl, type }: { fileUrl: string, type: string }) {
     ),
   };
 
-  if (type === 'image') {
+  if (classifiedType === 'image') {
     return broken ? (
       <span style={{ color: '#d32f2f', marginRight: 8 }}>Image not found</span>
     ) : (
@@ -180,7 +214,7 @@ function FilePreview({ fileUrl, type }: { fileUrl: string, type: string }) {
       />
     );
   }
-  if (type === 'video') {
+  if (classifiedType === 'video') {
     return broken ? (
       <span style={{ color: '#d32f2f', marginRight: 8 }}>Video not found</span>
     ) : (
@@ -193,9 +227,9 @@ function FilePreview({ fileUrl, type }: { fileUrl: string, type: string }) {
     );
   }
   // Document types
-  if (type === 'document') {
+  if (classifiedType === 'document') {
     // Guess extension for icon
-    const ext = (fileUrl.split('.').pop() || '').toLowerCase();
+    const ext = getFileExtension(fileUrl);
     if (['pdf'].includes(ext)) return icons.pdf;
     if (['doc', 'docx'].includes(ext)) return icons.doc;
     if (['xls', 'xlsx'].includes(ext)) return icons.xls;
@@ -660,10 +694,10 @@ export default function Content() {
   }
 
   function classifyPreviewType(itemType: string, fileUrl: string | null): 'image' | 'video' | 'pdf' | 'other' {
-    if (itemType === 'image') return 'image';
-    if (itemType === 'video') return 'video';
-    const ext = ((fileUrl || '').split('.').pop() || '').toLowerCase();
-    if (ext === 'pdf') return 'pdf';
+    const classifiedType = classifyContentType(itemType);
+    if (classifiedType === 'image') return 'image';
+    if (classifiedType === 'video') return 'video';
+    if (isPdfFile(fileUrl)) return 'pdf';
     return 'other';
   }
 
