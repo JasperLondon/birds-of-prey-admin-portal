@@ -753,6 +753,16 @@ export default function Content() {
                                   className="icon-btn view"
                                   onClick={async () => {
                                     if (typeof item.file_url === 'string') {
+                                      try {
+                                        const directUrl = new URL(item.file_url);
+                                        const isHttp = directUrl.protocol === 'http:' || directUrl.protocol === 'https:';
+                                        if (isHttp) {
+                                          window.open(directUrl.toString(), '_blank');
+                                          return;
+                                        }
+                                      } catch {
+                                        // Not a valid absolute URL, continue with signed URL path handling.
+                                      }
                                       const { data } = await supabase.storage.from('files').createSignedUrl(item.file_url, 60);
                                       if (data?.signedUrl) window.open(data.signedUrl, '_blank');
                                       else alert('Could not get file link.');
