@@ -213,6 +213,25 @@ export default function Content() {
     return false;
   }, [now]);
 
+  function duePeriodToDueDate(duePeriod: string | null): string | null {
+    if (!duePeriod) return null;
+    if (/^\d{4}-\d{2}$/.test(duePeriod)) {
+      const [y, m] = duePeriod.split('-').map(Number);
+      const due = new Date(y, m, 0);
+      return due.toISOString().slice(0, 10);
+    }
+    if (/^\d{4}-Q[1-4]$/.test(duePeriod)) {
+      const [y, q] = duePeriod.split('-Q');
+      const month = 3 * Number(q);
+      const due = new Date(Number(y), month, 0);
+      return due.toISOString().slice(0, 10);
+    }
+    if (/^\d{4}-\d{2}-\d{2}$/.test(duePeriod)) {
+      return duePeriod;
+    }
+    return null;
+  }
+
   const summary = React.useMemo(() => {
     const total = content.length;
     const byStatus = Object.fromEntries(statusOptions.map(s => [s, 0]));
@@ -299,17 +318,18 @@ export default function Content() {
   async function createAssignmentArtifacts(input: {
     contentId: string;
     athleteId: string;
-    contractId: string | null;
+    title: string;
+    type: string;
+    description: string;
     duePeriod: string | null;
-    status: string;
   }) {
     const taskPayload: Record<string, unknown> = {
-      content_id: input.contentId,
-      athlete_id: input.athleteId,
-      due_period: input.duePeriod,
-      status: input.status,
+      title: input.title,
+      type: input.type,
+      description: input.description,
     };
-    if (input.contractId) taskPayload.contract_id = input.contractId;
+    const dueDate = duePeriodToDueDate(input.duePeriod);
+    if (dueDate) taskPayload.due_date = dueDate;
 
     const { data: taskRow, error: taskError } = await supabase
       .from('content_tasks')
@@ -322,9 +342,9 @@ export default function Content() {
     }
 
     const assignmentPayload: Record<string, unknown> = {
-      content_id: input.contentId,
-      content_task_id: taskRow.id,
+      task_id: taskRow.id,
       athlete_id: input.athleteId,
+      status: 'not_started',
     };
 
     const { data: assignmentRow, error: assignmentError } = await supabase
@@ -334,6 +354,7 @@ export default function Content() {
       .single();
 
     if (assignmentError || !assignmentRow?.id) {
+      await supabase.from('content_tasks').delete().eq('id', taskRow.id);
       throw new Error(assignmentError?.message || 'Failed to create content assignment.');
     }
 
@@ -343,6 +364,8 @@ export default function Content() {
       .eq('id', input.contentId);
 
     if (linkError) {
+      await supabase.from('content_assignments').delete().eq('id', assignmentRow.id);
+      await supabase.from('content_tasks').delete().eq('id', taskRow.id);
       throw new Error(linkError.message || 'Failed to link assignment to content instruction.');
     }
   }
@@ -446,9 +469,10 @@ export default function Content() {
               await createAssignmentArtifacts({
                 contentId: editingId,
                 athleteId: form.athlete_id,
-                contractId: form.contract_id || null,
+                title: form.title,
+                type: form.type,
+                description: form.description,
                 duePeriod: form.due_period || null,
-                status: form.status,
               });
             } catch (assignmentError: any) {
               setError(assignmentError?.message || 'Assignment workflow failed after content update.');
@@ -475,11 +499,13 @@ export default function Content() {
               await createAssignmentArtifacts({
                 contentId: inserted.id,
                 athleteId: inserted.athlete_id,
-                contractId: inserted.contract_id || null,
-                duePeriod: inserted.due_period || null,
-                status: inserted.status || 'submitted',
+                title: payload.title,
+                type: payload.type,
+                description: payload.description,
+                duePeriod: payload.due_period || null,
               });
             } catch (assignmentError: any) {
+              await supabase.from('content').delete().eq('id', inserted.id);
               setError(assignmentError?.message || 'Assignment workflow failed after content creation.');
               setSaving(false);
               return;
